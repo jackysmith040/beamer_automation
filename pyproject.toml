@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "beamer-automation"
+version = "0.2.0"
+description = "Agent-driven, zero-config LaTeX & Beamer automation framework for students, lecturers, and researchers."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "jackysmith040" }
+]
+keywords = ["latex", "beamer", "presentation", "thesis", "automation", "ai-agent", "tectonic"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Text Processing :: Markup :: LaTeX",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+]
+dependencies = [
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+beamer = "agent_helper.cli:app"
+texpipe = "agent_helper.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_helper"]

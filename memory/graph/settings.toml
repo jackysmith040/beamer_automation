@@ -1,0 +1,22 @@
+# NeuroWiki Graph Settings (No-Code Menu)
+# Format: TOML (Easier for AI, Cleaner for Humans)
+
+[visuals]
+theme = "nebula"
+node_glow = true
+simulation_speed = "fluid" 
+labels = "hover_only"
+auto_refresh_seconds = 5
+
+[colors]
+left_hemisphere = "#00FFFF"
+right_hemisphere = "#FF00FF"
+wiki_page = "#FFFF00"
+blindspot = "#FF3300"
+system = "#FFFFFF"
+
+[physics]
+repel_force = -300
+link_distance = 100
+center_gravity = 0.5
+collision_radius = 30

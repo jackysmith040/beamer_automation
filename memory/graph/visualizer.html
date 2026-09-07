@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Axon Neural Map</title>
+    <script src="lib/d3.min.js"></script>
+    <script src="brain_data.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:      #06080c;
+            --surface: rgba(10, 16, 28, 0.88);
+            --accent:  #00e5ff;
+            --glow:    rgba(0, 229, 255, 0.3);
+            --left:    #b06dff;
+            --right:   #ff6db0;
+            --wiki:    #ffd56d;
+            --border:  rgba(255, 255, 255, 0.08);
+            --text:    #c8cdd8;
+        }
+
+        html, body {
+            width: 100%; height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+
+        #graph-container {
+            width: 100%; height: 100%;
+            cursor: grab;
+        }
+        #graph-container:active { cursor: grabbing; }
+
+        /* HUD */
+        #hud {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .ui { pointer-events: auto; }
+
+        /* Top bar */
+        #topbar {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 18px 28px;
+        }
+        .brand {
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 6px;
+            color: var(--accent);
+            text-shadow: 0 0 16px var(--glow);
+        }
+
+        /* Sidebar */
+        #sidebar {
+            position: absolute;
+            top: 74px; left: 20px;
+            width: 220px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 18px;
+            backdrop-filter: blur(14px);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .s-title {
+            font-size: 0.58rem;
+            letter-spacing: 3px;
+            opacity: 0.4;
+            text-transform: uppercase;
+        }
+        .s-row { display: flex; flex-direction: column; gap: 5px; }
+        .s-row label { font-size: 0.68rem; opacity: 0.7; }
+        input[type=range] { width: 100%; accent-color: var(--accent); }
+        .s-btn {
+            width: 100%;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 9px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.72rem;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+        }
+        .s-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* Detail panel */
+        #detail {
+            position: absolute;
+            bottom: 28px; right: 28px;
+            width: 320px;
+            max-height: 60vh;
+            overflow-y: auto;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 24px;
+            backdrop-filter: blur(18px);
+            transform: translateX(380px);
+            transition: transform 0.4s cubic-bezier(0.2,0.8,0.2,1);
+        }
+        #detail.open { transform: translateX(0); }
+        .d-header {
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 14px;
+        }
+        .d-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+        .d-title { font-size: 0.9rem; color: #fff; font-weight: 600; word-break: break-all; }
+        .d-body  { font-size: 0.78rem; line-height: 1.7; color: var(--text); }
+        .d-body h1, .d-body h2, .d-body h3 { color: var(--accent); font-size: 0.88rem; margin: 10px 0 5px; }
+        .d-body code { background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 3px; }
+        .d-close {
+            width: 100%; margin-top: 16px;
+            background: transparent; border: 1px solid var(--border);
+            color: var(--text); padding: 8px; border-radius: 8px;
+            cursor: pointer; font-size: 0.7rem; transition: 0.2s;
+        }
+        .d-close:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* Legend */
+        #legend {
+            position: absolute;
+            bottom: 28px; left: 20px;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .l-item { display: flex; align-items: center; gap: 8px; font-size: 0.65rem; opacity: 0.6; }
+        .l-dot  { width: 8px; height: 8px; border-radius: 50%; }
+
+        /* Back link */
+        #back {
+            position: absolute;
+            bottom: 28px; left: 50%; transform: translateX(-50%);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 9px 22px;
+            border-radius: 50px;
+            font-size: 0.68rem;
+            letter-spacing: 3px;
+            text-decoration: none;
+            transition: 0.3s; display: inline-block;
+        }
+        #back:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 18px var(--glow); }
+
+        /* D3 styles */
+        .link { stroke: rgba(0,229,255,0.15); stroke-width: 1; fill: none; }
+        .node-label { pointer-events: none; fill: rgba(255,255,255,0.65); font-family: 'Inter',system-ui,sans-serif; }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+<div id="graph-container"></div>
+
+<div id="hud">
+    <div id="topbar">
+        <span class="brand">AXON NEURAL MAP</span>
+        <span style="font-size:0.6rem;opacity:0.3;letter-spacing:3px;">CONSCIOUSNESS ENGINE</span>
+    </div>
+
+    <div id="sidebar" class="ui">
+        <span class="s-title">Physics</span>
+        <div class="s-row">
+            <label>Repulsion</label>
+            <input type="range" id="s-repel" min="-1500" max="-50" value="-400" oninput="applyPhysics()">
+        </div>
+        <div class="s-row">
+            <label>Link Distance</label>
+            <input type="range" id="s-link" min="30" max="400" value="120" oninput="applyPhysics()">
+        </div>
+        <div class="s-row">
+            <label>Center Gravity</label>
+            <input type="range" id="s-gravity" min="0" max="0.5" step="0.01" value="0.08" oninput="applyPhysics()">
+        </div>
+        <span class="s-title">Director</span>
+        <button class="s-btn" onclick="recenter()">FIT TO VIEWPORT</button>
+    </div>
+
+    <div id="detail" class="ui">
+        <div class="d-header">
+            <div class="d-dot" id="d-dot"></div>
+            <div class="d-title" id="d-title">—</div>
+        </div>
+        <div class="d-body" id="d-body"></div>
+        <button class="d-close" onclick="closeDetail()">RELEASE FOCUS</button>
+    </div>
+
+    <div id="legend">
+        <div class="l-item"><div class="l-dot" style="background:var(--left)"></div>Left Hemisphere</div>
+        <div class="l-item"><div class="l-dot" style="background:var(--right)"></div>Right Hemisphere</div>
+        <div class="l-item"><div class="l-dot" style="background:var(--wiki)"></div>Wiki / Synthesis</div>
+    </div>
+
+    <a href="../START_HERE.html" id="back" class="ui">← NEXUS</a>
+</div>
+
+<script>
+/* ── Data ─────────────────────────────────────────────────── */
+const RAW    = window.BRAIN_DATA || { nodes: [], links: [], docs: {} };
+const nodes  = RAW.nodes.map(d => ({ ...d }));
+const nodeIds = new Set(nodes.map(n => n.id));
+const links  = (RAW.links || [])
+    .filter(l => nodeIds.has(l.source) && nodeIds.has(l.target))
+    .map(d => ({ ...d }));
+
+/* ── Colors ───────────────────────────────────────────────── */
+const COLOR = { left_hemisphere:'#b06dff', right_hemisphere:'#ff6db0', wiki:'#ffd56d' };
+function nodeColor(n) { return COLOR[n.group] || '#00e5ff'; }
+
+/* ── Dimensions ───────────────────────────────────────────── */
+let W = window.innerWidth;
+let H = window.innerHeight;
+
+/* ── SVG ──────────────────────────────────────────────────── */
+const svg = d3.select('#graph-container')
+    .append('svg')
+    .attr('width', W).attr('height', H);
+
+const defs   = svg.append('defs');
+const filter = defs.append('filter').attr('id','glow').attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');
+filter.append('feGaussianBlur').attr('in','SourceGraphic').attr('stdDeviation',4).attr('result','blur');
+const feMerge = filter.append('feMerge');
+feMerge.append('feMergeNode').attr('in','blur');
+feMerge.append('feMergeNode').attr('in','SourceGraphic');
+
+const g = svg.append('g');
+
+/* ── Simulation ───────────────────────────────────────────── */
+const sim = d3.forceSimulation(nodes)
+    .force('link',      d3.forceLink(links).id(d => d.id).distance(120))
+    .force('charge',    d3.forceManyBody().strength(-400))
+    .force('x',         d3.forceX(W/2).strength(0.08))
+    .force('y',         d3.forceY(H/2).strength(0.08))
+    .force('center',    d3.forceCenter(W/2, H/2))
+    .force('collision', d3.forceCollide().radius(d => 14 + (d.weight||40)/10))
+    .alphaDecay(0.015);
+
+const zoom = d3.zoom().scaleExtent([0.05, 10])
+    .on('zoom', e => g.attr('transform', e.transform));
+
+svg.call(zoom);
+
+/* ── Links ────────────────────────────────────────────────── */
+const linkEl = g.append('g')
+    .selectAll('line')
+    .data(links)
+    .join('line')
+    .attr('class','link');
+
+/* ── Nodes ────────────────────────────────────────────────── */
+const nodeG = g.append('g')
+    .selectAll('g')
+    .data(nodes)
+    .join('g')
+    .call(
+        d3.drag()
+          .on('start', (e,d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+          .on('drag',  (e,d) => { d.fx=e.x; d.fy=e.y; })
+          .on('end',   (e,d) => { if (!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; })
+    )
+    .on('click', (e, d) => {
+        e.stopPropagation();
+        openDetail(d);
+        // Dim non-neighbours
+        const nbrs = new Set(links
+            .filter(l => l.source.id===d.id || l.target.id===d.id)
+            .flatMap(l => [l.source.id, l.target.id]));
+        nodeG.style('opacity', n => nbrs.has(n.id)||n.id===d.id ? 1 : 0.12);
+        linkEl.style('stroke-opacity', l =>
+            l.source.id===d.id||l.target.id===d.id ? 0.85 : 0.03);
+    })
+    .style('cursor','pointer');
+
+// Halo
+nodeG.append('circle')
+    .attr('r', d => (14 + (d.weight||40)/10) * 2)
+    .attr('fill', d => nodeColor(d))
+    .attr('opacity', 0.08);
+
+// Core
+nodeG.append('circle')
+    .attr('r', d => 14 + (d.weight||40)/10)
+    .attr('fill', d => nodeColor(d))
+    .attr('filter','url(#glow)');
+
+// Label
+nodeG.append('text')
+    .attr('class','node-label')
+    .attr('text-anchor','middle')
+    .attr('dy', d => 20 + (d.weight||40)/10)
+    .attr('font-size', 11)
+    .text(d => d.id.split('/').pop().replace('.md',''));
+
+/* ── Reset on background click ────────────────────────────── */
+svg.on('click', e => {
+    if (e.target.tagName === 'svg') {
+        nodeG.style('opacity', 1);
+        linkEl.style('stroke-opacity', 0.3);
+        closeDetail();
+    }
+});
+
+/* ── Tick ─────────────────────────────────────────────────── */
+sim.on('tick', () => {
+    linkEl
+        .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    nodeG.attr('transform', d => `translate(${d.x},${d.y})`);
+});
+
+/* ── Physics sliders ──────────────────────────────────────── */
+function applyPhysics() {
+    sim.force('charge').strength(+document.getElementById('s-repel').value);
+    sim.force('link').distance(+document.getElementById('s-link').value);
+    sim.force('x').strength(+document.getElementById('s-gravity').value);
+    sim.force('y').strength(+document.getElementById('s-gravity').value);
+    sim.alpha(0.4).restart();
+}
+
+/* ── Recenter ─────────────────────────────────────────────── */
+function recenter() {
+    if (!nodes.length) return;
+
+    // 1. Calculate Bounding Box of all nodes
+    const xExt = d3.extent(nodes, d => d.x);
+    const yExt = d3.extent(nodes, d => d.y);
+    
+    const dx = xExt[1] - xExt[0] || 1;
+    const dy = yExt[1] - yExt[0] || 1;
+    const midX = (xExt[0] + xExt[1]) / 2;
+    const midY = (yExt[0] + yExt[1]) / 2;
+
+    // 2. Calculate optimal scale to fit screen with padding
+    const padding = 0.75; // 25% margin
+    const scale = padding / Math.max(dx / window.innerWidth, dy / window.innerHeight);
+    const clampedScale = Math.max(0.1, Math.min(1.5, scale));
+
+    // 3. Compose the transform: Center the viewport, then translate back to the mid-point
+    const transform = d3.zoomIdentity
+        .translate(window.innerWidth / 2, window.innerHeight / 2)
+        .scale(clampedScale)
+        .translate(-midX, -midY);
+
+    svg.transition().duration(1000).ease(d3.easePolyOut)
+        .call(zoom.transform, transform);
+
+    sim.alpha(0.3).restart();
+}
+
+/* ── Detail panel ─────────────────────────────────────────── */
+function openDetail(node) {
+    const color = nodeColor(node);
+    const dot   = document.getElementById('d-dot');
+    dot.style.background = color;
+    dot.style.boxShadow  = `0 0 8px ${color}`;
+    document.getElementById('d-title').textContent = node.id;
+
+    const docs = (window.BRAIN_DATA||{}).docs||{};
+    let content = docs[node.id] || docs[node.path] || '';
+    if (!content || content.startsWith('Error:')) {
+        content = `**${node.id.split('/').pop().replace('.md','')}**\n\n${node.summary||'No description yet.'}`;
+    }
+
+    // Simple markdown renderer (no dependency)
+    document.getElementById('d-body').innerHTML = simpleMarkdown(content);
+    document.getElementById('detail').classList.add('open');
+}
+
+function closeDetail() {
+    document.getElementById('detail').classList.remove('open');
+}
+
+function simpleMarkdown(md) {
+    return md
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm,  '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm,   '<h1>$1</h1>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`(.+?)`/g, '<code>$1</code>')
+        .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+        .replace(/\n\n/g, '<br><br>');
+}
+
+/* ── Resize ───────────────────────────────────────────────── */
+window.addEventListener('resize', () => {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    svg.attr('width', W).attr('height', H);
+    
+    // Re-target forces to new center
+    sim.force('center', d3.forceCenter(W/2, H/2));
+    sim.force('x', d3.forceX(W/2).strength(sim.force('x').strength()));
+    sim.force('y', d3.forceY(H/2).strength(sim.force('y').strength()));
+    sim.alpha(0.3).restart();
+});
+</script>
+</body>
+</html>
